@@ -323,4 +323,7 @@ coatingOptions(el('rectCoating')); coatingOptions(el('roundCoating')); updateFac
 </html>
 """
 
-components.html(html, height=2400, scrolling=True)
+# Wichtig: scrolling=False verhindert den zweiten Scrollbalken auf dem iPhone.
+# Die Höhe ist bewusst groß gewählt, damit die Seite normal über Safari/Streamlit scrollt.
+components.html(html, height=6500, scrolling=False)
+
