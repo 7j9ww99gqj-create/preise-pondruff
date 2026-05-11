@@ -18,10 +18,15 @@ VAT_RATE = 19.0
 # Die Werte unten sind deshalb die R4-Schichtfaktoren, nicht der Endmultiplikator.
 BASE_COATING_MULTIPLIER = 1.2
 COATING_FACTORS = {
-    "Meta S": 1.40,
+    "Duplex Meta-VA": 1.40,
+    "Duplex Meta-CAX": 1.50,
+    "Meta-S": 1.40,
+    "AlCrN": 1.40,
     "TiCN": 1.10,
-    "CrN": 1.10,
     "TiN": 1.10,
+    "CrN": 1.10,
+    "CrN-RB": 1.40,
+    "CrN-DLC": 1.60,
 }
 
 PRICE_TABLE = [
