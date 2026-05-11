@@ -12,12 +12,15 @@ VAT_RATE = 19.0
 
 # Quelle: „2018-04-21 EUROPL01 - für TiN +CrN + TiCN.xls“, Blatt „mm³ Tabelle“.
 # Die Excel-Datei rechnet mit mm³-Schwellen und VLOOKUP(..., TRUE), also mit der
-# jeweils nächstkleineren Staffel. Die Faktoren unten sind die finalen
-# Beschichtungs-Multiplikatoren aus der Originalformel:
-# CrN/TiCN = 1.2 * 1.1, TiN = 1.1.
+# jeweils nächstkleineren Staffel. Maßgeblich für den Preisrechner sind die
+# Ergebniszellen S10 (eckige Teile) und S25 (runde Teile). Beide verwenden:
+# Preis = VLOOKUP-mm³-Faktor * mm³ / 1000 * 1.2 * R4-Faktor.
+# Die Werte unten sind deshalb die R4-Schichtfaktoren, nicht der Endmultiplikator.
+BASE_COATING_MULTIPLIER = 1.2
 COATING_FACTORS = {
-    "TiCN": 1.32,
-    "CrN": 1.32,
+    "Meta S": 1.40,
+    "TiCN": 1.10,
+    "CrN": 1.10,
     "TiN": 1.10,
 }
 
@@ -69,6 +72,7 @@ logo_uri = img_data_uri(LOGO_FILE)
 icon_uri = img_data_uri(ICON_FILE)
 coatings_json = json.dumps(COATING_FACTORS, ensure_ascii=False)
 price_table_json = json.dumps(PRICE_TABLE)
+base_multiplier_json = json.dumps(BASE_COATING_MULTIPLIER)
 
 html = f"""
 <!doctype html>
@@ -157,10 +161,10 @@ input[readonly] {{ opacity:.95; }}
   <div class="desktop-grid">
     <div class="card">
       <div class="card-title"><span class="icon">▣</span>Eckige Bauteile</div>
-      <p class="muted">Schicht × Faktor × Breite A × Breite B × Höhe</p>
+      <p class="muted">Wie Excel S10: mm³ aus Breite A × Breite B × Höhe, Staffel aus Tabelle, dann × 1,2 × R4-Faktor</p>
       <div class="grid2">
         <div class="field"><label>Schicht</label><select id="rectCoating"></select></div>
-        <div class="field"><label>Faktor</label><input id="rectFactor" readonly /></div>
+        <div class="field"><label>R4-Faktor</label><input id="rectFactor" inputmode="decimal" /></div>
         <div class="field"><label>Breite A (mm)</label><input id="rectA" inputmode="decimal" /></div>
         <div class="field"><label>Breite B (mm)</label><input id="rectB" inputmode="decimal" /></div>
         <div class="field"><label>Höhe (mm)</label><input id="rectH" inputmode="decimal" /></div>
@@ -174,10 +178,10 @@ input[readonly] {{ opacity:.95; }}
 
     <div class="card">
       <div class="card-title"><span class="icon">●</span>Runde Bauteile</div>
-      <p class="muted">Schicht × Faktor × Durchmesser × Länge</p>
+      <p class="muted">Wie Excel S25: mm³ aus Ø² × π / 4 × Länge, Staffel aus Tabelle, dann × 1,2 × R4-Faktor</p>
       <div class="grid2">
         <div class="field"><label>Schicht</label><select id="roundCoating"></select></div>
-        <div class="field"><label>Faktor</label><input id="roundFactor" readonly /></div>
+        <div class="field"><label>R4-Faktor</label><input id="roundFactor" inputmode="decimal" /></div>
         <div class="field"><label>Durchmesser (mm)</label><input id="roundD" inputmode="decimal" /></div>
         <div class="field"><label>Länge (mm)</label><input id="roundL" inputmode="decimal" /></div>
         <div class="field"><label>Stückzahl</label><input id="roundQty" inputmode="numeric" /></div>
@@ -225,6 +229,7 @@ input[readonly] {{ opacity:.95; }}
 const COATINGS = {coatings_json};
 const PRICE_TABLE = {price_table_json};
 const VAT_RATE = {VAT_RATE};
+const BASE_COATING_MULTIPLIER = {base_multiplier_json};
 let positions = [];
 
 function el(id) {{ return document.getElementById(id); }}
@@ -252,20 +257,25 @@ function roundUp(value, decimals=1) {{
   const f = Math.pow(10, decimals);
   return Math.ceil((Number(value) || 0) * f - 1e-9) / f;
 }}
-function calcPrice(volume, factor) {{
-  if (volume <= 0 || factor <= 0) return 0;
-  return lookupRate(volume) * volume / 1000 * factor;
+function calcPrice(volume, r4Factor) {{
+  if (volume <= 0 || r4Factor <= 0) return 0;
+  return lookupRate(volume) * volume / 1000 * BASE_COATING_MULTIPLIER * r4Factor;
 }}
 function discountPrice(price, discount) {{ discount = Math.max(0, Math.min(100, discount)); return Math.round(price * (1 - discount/100) * 100) / 100; }}
 function coatingOptions(select) {{
   select.innerHTML = '<option>Bitte wählen</option>' + Object.keys(COATINGS).map(k => `<option>${{k}}</option>`).join('');
 }}
+function setFactorFromCoating(kind) {{
+  const coating = el(kind + 'Coating').value;
+  const factorInput = el(kind + 'Factor');
+  if (COATINGS[coating]) factorInput.value = factorText(COATINGS[coating]);
+}}
 function updateFactors() {{
-  el('rectFactor').value = factorText(COATINGS[el('rectCoating').value] || 0);
-  el('roundFactor').value = factorText(COATINGS[el('roundCoating').value] || 0);
+  setFactorFromCoating('rect');
+  setFactorFromCoating('round');
 }}
 function rectCalc() {{
-  const factor = COATINGS[el('rectCoating').value] || 0;
+  const factor = parseNumber(el('rectFactor').value);
   const volume = parseNumber(el('rectA').value) * parseNumber(el('rectB').value) * parseNumber(el('rectH').value);
   const normal = roundUp(calcPrice(volume, factor) * parseQty(el('rectQty').value), 1);
   const discount = parseNumber(el('rectDiscount').value);
@@ -274,7 +284,7 @@ function rectCalc() {{
   return {{normal, final, discount, factor}};
 }}
 function roundCalc() {{
-  const factor = COATINGS[el('roundCoating').value] || 0;
+  const factor = parseNumber(el('roundFactor').value);
   const d = parseNumber(el('roundD').value);
   const l = parseNumber(el('roundL').value);
   const volume = (d*d) * 3.1415 / 4 * l;
@@ -333,8 +343,12 @@ async function copySummary() {{
   el('copyBox').style.display='block'; el('copyBox').textContent = txt;
   try {{ await navigator.clipboard.writeText(txt); alert('Ergebnis wurde kopiert.'); }} catch(e) {{ alert('Kopieren nicht möglich. Text wird unten angezeigt.'); }}
 }}
-['rectCoating','roundCoating'].forEach(id => el(id).addEventListener('change', () => {{ updateFactors(); rectCalc(); roundCalc(); }}));
-document.querySelectorAll('input, select').forEach(x => x.addEventListener('input', () => {{ updateFactors(); rectCalc(); roundCalc(); render(); }}));
+['rectCoating','roundCoating'].forEach(id => el(id).addEventListener('change', () => {{
+  if (id === 'rectCoating') setFactorFromCoating('rect');
+  if (id === 'roundCoating') setFactorFromCoating('round');
+  rectCalc(); roundCalc(); render();
+}}));
+document.querySelectorAll('input, select').forEach(x => x.addEventListener('input', () => {{ rectCalc(); roundCalc(); render(); }}));
 coatingOptions(el('rectCoating')); coatingOptions(el('roundCoating')); updateFactors(); rectCalc(); roundCalc(); render();
 </script>
 </body>
