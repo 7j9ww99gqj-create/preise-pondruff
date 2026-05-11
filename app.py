@@ -9,31 +9,42 @@ APP_TITLE = "Pondruff Preis Kalkulator"
 LOGO_FILE = "logo.png"
 ICON_FILE = "icon.png"
 VAT_RATE = 19.0
-BASE_MULTIPLIER = 1.2
 
+# Quelle: „2018-04-21 EUROPL01 - für TiN +CrN + TiCN.xls“, Blatt „mm³ Tabelle“.
+# Die Excel-Datei rechnet mit mm³-Schwellen und VLOOKUP(..., TRUE), also mit der
+# jeweils nächstkleineren Staffel. Die Faktoren unten sind die finalen
+# Beschichtungs-Multiplikatoren aus der Originalformel:
+# CrN/TiCN = 1.2 * 1.1, TiN = 1.1.
 COATING_FACTORS = {
-    "Duplex Meta-VA": 1.4,
-    "Duplex Meta-CAX": 1.5,
-    "Meta-S": 1.4,
-    "AlCrN": 1.4,
-    "TiCN": 1.1,
-    "TiN": 1.1,
-    "CrN": 1.1,
-    "CrN-RB": 1.4,
-    "CrN-DLC": 1.6,
+    "TiCN": 1.32,
+    "CrN": 1.32,
+    "TiN": 1.10,
 }
 
 PRICE_TABLE = [
-    [1, 7.50], [2, 5.00], [3, 2.50], [6, 1.90], [10, 1.65],
-    [15, 1.60], [20, 1.50], [25, 1.40], [30, 1.30], [40, 1.20],
-    [50, 1.00], [60, 0.90], [70, 0.84], [80, 0.80], [150, 0.67],
-    [200, 0.64], [250, 0.60], [300, 0.59], [400, 0.58], [500, 0.57],
-    [600, 0.55], [700, 0.53], [800, 0.52], [900, 0.48], [950, 0.46],
-    [1000, 0.45], [1100, 0.42], [1200, 0.39], [1300, 0.37], [1400, 0.35],
-    [1500, 0.33], [1600, 0.32], [1700, 0.30], [1800, 0.28], [1900, 0.27],
-    [2000, 0.26], [2500, 0.23], [3000, 0.20], [3500, 0.19], [4000, 0.17],
-    [4500, 0.16], [5000, 0.15], [6500, 0.14], [7500, 0.13], [10000, 0.12],
-    [35000, 0.11], [50000, 0.10], [999999, 0.08],
+    [1000, 2.55645940598109], [2000, 1.27822970299055],
+    [3000, 0.971454574272815], [6000, 0.843631603973761],
+    [10000, 0.81806700991395], [15000, 0.766937821794328],
+    [20000, 0.715808633674706], [25000, 0.664679445555084],
+    [30000, 0.613550257435462], [40000, 0.511291881196219],
+    [50000, 0.460162693076597], [60000, 0.429485180204824],
+    [70000, 0.409033504956975], [80000, 0.342565560401466],
+    [150000, 0.32722680396558], [200000, 0.306775128717731],
+    [250000, 0.301662209905769], [300000, 0.296549291093807],
+    [400000, 0.291436372281845], [500000, 0.28121053465792],
+    [600000, 0.270984697033996], [700000, 0.265871778222034],
+    [800000, 0.245420102974185], [900000, 0.235194265350261],
+    [950000, 0.230081346538298], [1000000, 0.214742590102412],
+    [1100000, 0.199403833666525], [1200000, 0.189177996042601],
+    [1300000, 0.178952158418676], [1400000, 0.168726320794752],
+    [1500000, 0.16361340198279], [1600000, 0.153387564358866],
+    [1700000, 0.143161726734941], [1800000, 0.138048807922979],
+    [1900000, 0.132935889111017], [2000000, 0.11759713267513],
+    [2500000, 0.102258376239244], [3000000, 0.0971454574272815],
+    [3500000, 0.0869196198033572], [4000000, 0.081806700991395],
+    [4500000, 0.0766937821794328], [5000000, 0.0715808633674706],
+    [6500000, 0.0664679445555084], [7500000, 0.0613550257435462],
+    [10000000, 0.056242106931584], [35000000, 0.0511291881196219],
 ]
 
 
@@ -214,7 +225,6 @@ input[readonly] {{ opacity:.95; }}
 const COATINGS = {coatings_json};
 const PRICE_TABLE = {price_table_json};
 const VAT_RATE = {VAT_RATE};
-const BASE_MULTIPLIER = {BASE_MULTIPLIER};
 let positions = [];
 
 function el(id) {{ return document.getElementById(id); }}
@@ -231,12 +241,20 @@ function euro(v) {{ return Number(v).toLocaleString('de-DE', {{minimumFractionDi
 function factorText(v) {{ return v ? String(v).replace('.', ',') : ''; }}
 function lookupRate(volume) {{
   if (volume <= 0) return 0;
-  for (const row of PRICE_TABLE) if (volume <= row[0]) return row[1];
-  return PRICE_TABLE[PRICE_TABLE.length-1][1];
+  let rate = PRICE_TABLE[0][1];
+  for (const row of PRICE_TABLE) {{
+    if (volume >= row[0]) rate = row[1];
+    else break;
+  }}
+  return rate;
+}}
+function roundUp(value, decimals=1) {{
+  const f = Math.pow(10, decimals);
+  return Math.ceil((Number(value) || 0) * f - 1e-9) / f;
 }}
 function calcPrice(volume, factor) {{
   if (volume <= 0 || factor <= 0) return 0;
-  return Math.round((lookupRate(volume) * volume / 1000 * BASE_MULTIPLIER * factor) * 100) / 100;
+  return lookupRate(volume) * volume / 1000 * factor;
 }}
 function discountPrice(price, discount) {{ discount = Math.max(0, Math.min(100, discount)); return Math.round(price * (1 - discount/100) * 100) / 100; }}
 function coatingOptions(select) {{
@@ -249,7 +267,7 @@ function updateFactors() {{
 function rectCalc() {{
   const factor = COATINGS[el('rectCoating').value] || 0;
   const volume = parseNumber(el('rectA').value) * parseNumber(el('rectB').value) * parseNumber(el('rectH').value);
-  const normal = calcPrice(volume, factor) * parseQty(el('rectQty').value);
+  const normal = roundUp(calcPrice(volume, factor) * parseQty(el('rectQty').value), 1);
   const discount = parseNumber(el('rectDiscount').value);
   const final = discountPrice(normal, discount);
   el('rectPreview').innerHTML = `Normalpreis: ${{euro(normal)}}<br>Rabatt: -${{discount}}%<br>Preis nach Rabatt: ${{euro(final)}}`;
@@ -259,8 +277,8 @@ function roundCalc() {{
   const factor = COATINGS[el('roundCoating').value] || 0;
   const d = parseNumber(el('roundD').value);
   const l = parseNumber(el('roundL').value);
-  const volume = (d*d) * Math.PI / 4 * l;
-  const normal = calcPrice(volume, factor) * parseQty(el('roundQty').value);
+  const volume = (d*d) * 3.1415 / 4 * l;
+  const normal = roundUp(calcPrice(volume, factor) * parseQty(el('roundQty').value), 1);
   const discount = parseNumber(el('roundDiscount').value);
   const final = discountPrice(normal, discount);
   el('roundPreview').innerHTML = `Normalpreis: ${{euro(normal)}}<br>Rabatt: -${{discount}}%<br>Preis nach Rabatt: ${{euro(final)}}`;
