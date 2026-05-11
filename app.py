@@ -166,7 +166,6 @@ input[readonly] {{ opacity:.95; }}
   <div class="desktop-grid">
     <div class="card">
       <div class="card-title"><span class="icon">▣</span>Eckige Bauteile</div>
-      <p class="muted">Wie Excel S10: mm³ aus Breite A × Breite B × Höhe, Staffel aus Tabelle, dann × 1,2 × R4-Faktor</p>
       <div class="grid2">
         <div class="field"><label>Schicht</label><select id="rectCoating"></select></div>
         <div class="field"><label>R4-Faktor</label><input id="rectFactor" inputmode="decimal" /></div>
@@ -183,7 +182,6 @@ input[readonly] {{ opacity:.95; }}
 
     <div class="card">
       <div class="card-title"><span class="icon">●</span>Runde Bauteile</div>
-      <p class="muted">Wie Excel S25: mm³ aus Ø² × π / 4 × Länge, Staffel aus Tabelle, dann × 1,2 × R4-Faktor</p>
       <div class="grid2">
         <div class="field"><label>Schicht</label><select id="roundCoating"></select></div>
         <div class="field"><label>R4-Faktor</label><input id="roundFactor" inputmode="decimal" /></div>
@@ -262,9 +260,10 @@ function roundUp(value, decimals=1) {{
   const f = Math.pow(10, decimals);
   return Math.ceil((Number(value) || 0) * f - 1e-9) / f;
 }}
-function calcPrice(volume, r4Factor) {{
+function calcPrice(volume, r4Factor, coating) {{
   if (volume <= 0 || r4Factor <= 0) return 0;
-  return lookupRate(volume) * volume / 1000 * BASE_COATING_MULTIPLIER * r4Factor;
+  const excelMultiplier = coating === 'TiN' ? 1 : BASE_COATING_MULTIPLIER;
+  return lookupRate(volume) * volume / 1000 * excelMultiplier * r4Factor;
 }}
 function discountPrice(price, discount) {{ discount = Math.max(0, Math.min(100, discount)); return Math.round(price * (1 - discount/100) * 100) / 100; }}
 function coatingOptions(select) {{
@@ -282,7 +281,7 @@ function updateFactors() {{
 function rectCalc() {{
   const factor = parseNumber(el('rectFactor').value);
   const volume = parseNumber(el('rectA').value) * parseNumber(el('rectB').value) * parseNumber(el('rectH').value);
-  const normal = roundUp(calcPrice(volume, factor) * parseQty(el('rectQty').value), 1);
+  const normal = roundUp(calcPrice(volume, factor, el('rectCoating').value) * parseQty(el('rectQty').value), 1);
   const discount = parseNumber(el('rectDiscount').value);
   const final = discountPrice(normal, discount);
   el('rectPreview').innerHTML = `Normalpreis: ${{euro(normal)}}<br>Rabatt: -${{discount}}%<br>Preis nach Rabatt: ${{euro(final)}}`;
@@ -293,7 +292,7 @@ function roundCalc() {{
   const d = parseNumber(el('roundD').value);
   const l = parseNumber(el('roundL').value);
   const volume = (d*d) * 3.1415 / 4 * l;
-  const normal = roundUp(calcPrice(volume, factor) * parseQty(el('roundQty').value), 1);
+  const normal = roundUp(calcPrice(volume, factor, el('roundCoating').value) * parseQty(el('roundQty').value), 1);
   const discount = parseNumber(el('roundDiscount').value);
   const final = discountPrice(normal, discount);
   el('roundPreview').innerHTML = `Normalpreis: ${{euro(normal)}}<br>Rabatt: -${{discount}}%<br>Preis nach Rabatt: ${{euro(final)}}`;
