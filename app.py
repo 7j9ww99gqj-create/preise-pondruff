@@ -10,13 +10,16 @@ LOGO_FILE = "logo.png"
 ICON_FILE = "icon.png"
 VAT_RATE = 19.0
 
-# Quelle: „2018-04-21 EUROPL01 - für TiN +CrN + TiCN.xls“, Blatt „mm³ Tabelle“.
+# Quelle: „2018-04-21 EUROPL01 - für neue Schnichten.xls“, Blatt „mm³ Tabelle“.
 # Die Excel-Datei rechnet mit mm³-Schwellen und VLOOKUP(..., TRUE), also mit der
 # jeweils nächstkleineren Staffel. Maßgeblich für den Preisrechner sind die
-# Ergebniszellen S10 (eckige Teile) und S25 (runde Teile). Beide verwenden:
+# Ergebniszellen S10 (eckige Teile), T10 (eckige Teile TiN), S25 (runde Teile)
+# und T25 (runde Teile TiN). Für alle Nicht-TiN-Schichten gilt:
 # Preis = VLOOKUP-mm³-Faktor * mm³ / 1000 * 1.2 * R4-Faktor.
+# Für TiN entfällt der 1.2-Multiplikator.
 # Die Werte unten sind deshalb die R4-Schichtfaktoren, nicht der Endmultiplikator.
 BASE_COATING_MULTIPLIER = 1.2
+EXCEL_PI = 3.141
 COATING_FACTORS = {
     "Duplex Meta-VA": 1.40,
     "Duplex Meta-CAX": 1.50,
@@ -233,6 +236,7 @@ const COATINGS = {coatings_json};
 const PRICE_TABLE = {price_table_json};
 const VAT_RATE = {VAT_RATE};
 const BASE_COATING_MULTIPLIER = {base_multiplier_json};
+const EXCEL_PI = {EXCEL_PI};
 let positions = [];
 
 function el(id) {{ return document.getElementById(id); }}
@@ -240,7 +244,7 @@ function parseNumber(v) {{
   if (v === null || v === undefined) return 0;
   v = String(v).trim();
   if (!v) return 0;
-  v = v.replace(/\./g, '').replace(',', '.');
+  v = v.replace(/\\./g, '').replace(',', '.');
   const n = Number(v);
   return isNaN(n) ? 0 : n;
 }}
@@ -256,16 +260,13 @@ function lookupRate(volume) {{
   }}
   return rate;
 }}
-function roundUp(value, decimals=1) {{
-  const f = Math.pow(10, decimals);
-  return Math.ceil((Number(value) || 0) * f - 1e-9) / f;
-}}
+function money(value) {{ return Math.round((Number(value) || 0) * 100) / 100; }}
 function calcPrice(volume, r4Factor, coating) {{
   if (volume <= 0 || r4Factor <= 0) return 0;
   const excelMultiplier = coating === 'TiN' ? 1 : BASE_COATING_MULTIPLIER;
   return lookupRate(volume) * volume / 1000 * excelMultiplier * r4Factor;
 }}
-function discountPrice(price, discount) {{ discount = Math.max(0, Math.min(100, discount)); return Math.round(price * (1 - discount/100) * 100) / 100; }}
+function discountPrice(price, discount) {{ discount = Math.max(0, Math.min(100, discount)); return money(price * (1 - discount/100)); }}
 function coatingOptions(select) {{
   select.innerHTML = '<option>Bitte wählen</option>' + Object.keys(COATINGS).map(k => `<option>${{k}}</option>`).join('');
 }}
@@ -281,7 +282,7 @@ function updateFactors() {{
 function rectCalc() {{
   const factor = parseNumber(el('rectFactor').value);
   const volume = parseNumber(el('rectA').value) * parseNumber(el('rectB').value) * parseNumber(el('rectH').value);
-  const normal = roundUp(calcPrice(volume, factor, el('rectCoating').value) * parseQty(el('rectQty').value), 1);
+  const normal = money(calcPrice(volume, factor, el('rectCoating').value) * parseQty(el('rectQty').value));
   const discount = parseNumber(el('rectDiscount').value);
   const final = discountPrice(normal, discount);
   el('rectPreview').innerHTML = `Normalpreis: ${{euro(normal)}}<br>Rabatt: -${{discount}}%<br>Preis nach Rabatt: ${{euro(final)}}`;
@@ -291,8 +292,8 @@ function roundCalc() {{
   const factor = parseNumber(el('roundFactor').value);
   const d = parseNumber(el('roundD').value);
   const l = parseNumber(el('roundL').value);
-  const volume = (d*d) * 3.1415 / 4 * l;
-  const normal = roundUp(calcPrice(volume, factor, el('roundCoating').value) * parseQty(el('roundQty').value), 1);
+  const volume = (d * d) * EXCEL_PI / 4 * l;
+  const normal = money(calcPrice(volume, factor, el('roundCoating').value) * parseQty(el('roundQty').value));
   const discount = parseNumber(el('roundDiscount').value);
   const final = discountPrice(normal, discount);
   el('roundPreview').innerHTML = `Normalpreis: ${{euro(normal)}}<br>Rabatt: -${{discount}}%<br>Preis nach Rabatt: ${{euro(final)}}`;
@@ -319,10 +320,10 @@ function render() {{
   const discounted = positions.reduce((s,p)=>s+p.final,0);
   const discount = normal - discounted;
   const expressPct = parseNumber(el('expressPercent').value);
-  const express = el('expressEnabled').value === 'yes' ? discounted * expressPct/100 : 0;
-  const net = Math.round((discounted + express) * 100)/100;
-  const vat = Math.round(net * VAT_RATE)/100;
-  const gross = Math.round((net + vat) * 100)/100;
+  const express = el('expressEnabled').value === 'yes' ? money(discounted * expressPct / 100) : 0;
+  const net = money(discounted + express);
+  const vat = money(net * VAT_RATE / 100);
+  const gross = money(net + vat);
   el('totalNetBig').textContent = euro(net);
   el('normalSum').textContent = euro(normal);
   el('discountSum').textContent = '-' + euro(discount);
@@ -334,9 +335,9 @@ function resetAll() {{ positions = []; document.querySelectorAll('input').forEac
 function summaryText() {{
   const normal = positions.reduce((s,p)=>s+p.normal,0), discounted = positions.reduce((s,p)=>s+p.final,0);
   const expressPct = parseNumber(el('expressPercent').value);
-  const express = el('expressEnabled').value === 'yes' ? discounted * expressPct/100 : 0;
-  const net = Math.round((discounted + express)*100)/100;
-  const vat = Math.round(net*VAT_RATE)/100, gross = Math.round((net+vat)*100)/100;
+  const express = el('expressEnabled').value === 'yes' ? money(discounted * expressPct / 100) : 0;
+  const net = money(discounted + express);
+  const vat = money(net * VAT_RATE / 100), gross = money(net + vat);
   let txt = `Pondruff Preis Kalkulator\nKunde: ${{el('customer').value}}\nNotiz/Projekt: ${{el('project').value}}\n\nPositionen:\n`;
   positions.forEach((p,i)=> txt += `${{i+1}}. ${{p.type}} | ${{p.coating}} | Faktor ${{factorText(p.factor)}} | ${{p.details}} | Stk: ${{p.qty}} | Rabatt: ${{p.discount}}% | Preis netto: ${{euro(p.final)}}${{p.note ? ' | '+p.note : ''}}\n`);
   txt += `\nGesamt netto: ${{euro(net)}}\nMwSt. (${{VAT_RATE}}%): ${{euro(vat)}}\nGesamt brutto: ${{euro(gross)}}`;
@@ -362,4 +363,3 @@ coatingOptions(el('rectCoating')); coatingOptions(el('roundCoating')); updateFac
 # Wichtig: scrolling=False verhindert den zweiten Scrollbalken auf dem iPhone.
 # Die Höhe ist bewusst groß gewählt, damit die Seite normal über Safari/Streamlit scrollt.
 components.html(html, height=6500, scrolling=False)
-
